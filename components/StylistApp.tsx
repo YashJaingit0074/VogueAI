@@ -26,27 +26,29 @@ const StylistApp: React.FC = () => {
   const scheduledEndTimeRef = useRef(0);
 
   // Safely check for the API key to prevent "Internal error" crashes
-  const checkConfig = async () => {
+  const getSafeApiKey = () => {
     try {
-      const apiKey = typeof process !== 'undefined' && process.env?.API_KEY;
-      if (apiKey) {
-        setNeedsKey(false);
-        return true;
-      }
-      
-      if (window.aistudio) {
-        const hasKey = await window.aistudio.hasSelectedApiKey();
-        setNeedsKey(!hasKey);
-        return hasKey;
-      }
-      
-      setNeedsKey(true);
-      return false;
+      return typeof process !== 'undefined' ? process.env?.API_KEY : undefined;
     } catch (e) {
-      console.warn("Config check failed, defaulting to manual key entry state.");
-      setNeedsKey(true);
-      return false;
+      return undefined;
     }
+  };
+
+  const checkConfig = async () => {
+    const apiKey = getSafeApiKey();
+    if (apiKey) {
+      setNeedsKey(false);
+      return true;
+    }
+    
+    if (window.aistudio) {
+      const hasKey = await window.aistudio.hasSelectedApiKey();
+      setNeedsKey(!hasKey);
+      return hasKey;
+    }
+    
+    setNeedsKey(true);
+    return false;
   };
 
   useEffect(() => {
@@ -89,9 +91,7 @@ const StylistApp: React.FC = () => {
   const startSession = async () => {
     setErrorMessage(null);
     const hasKey = await checkConfig();
-    
-    // Attempt to grab key directly - we must not use a separate variable to avoid stale closures
-    const currentApiKey = typeof process !== 'undefined' ? process.env.API_KEY : undefined;
+    const currentApiKey = getSafeApiKey();
 
     if (!currentApiKey && !window.aistudio) {
       setErrorMessage("Cloud authentication missing. Check environment variables.");
@@ -105,7 +105,7 @@ const StylistApp: React.FC = () => {
       await inputAudioContextRef.current.resume();
       await outputAudioContextRef.current.resume();
 
-      const ai = new GoogleGenAI({ apiKey: currentApiKey || process.env.API_KEY });
+      const ai = new GoogleGenAI({ apiKey: currentApiKey || (process.env.API_KEY as string) });
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
 
       const sessionPromise = ai.live.connect({
