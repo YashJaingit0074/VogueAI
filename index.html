@@ -8,12 +8,22 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     
-    <!-- Robust process shim to prevent ReferenceErrors in production browsers -->
+    <!-- Robust process shim - Must be at the very top -->
     <script>
-      window.process = window.process || { env: {} };
-      window.addEventListener('error', function(e) {
-        console.error('App Runtime Error:', e.message);
-      });
+      window.process = window.process || { env: { NODE_ENV: 'production' } };
+      
+      // Emergency UI Error Reporter
+      window.onerror = function(msg, url, line, col, error) {
+        var root = document.getElementById('root');
+        if (root) {
+          root.innerHTML = '<div style="background:#111;color:#ff4444;padding:2rem;font-family:monospace;height:100vh;">' +
+            '<h1 style="font-size:1.5rem">Atelier Initialization Error</h1>' +
+            '<p>The system failed to boot. Check console for details.</p>' +
+            '<pre style="background:#222;padding:1rem;margin-top:1rem;overflow:auto;">' + msg + '</pre>' +
+            '</div>';
+        }
+        return false;
+      };
     </script>
 
     <style>
@@ -64,11 +74,10 @@
 </head>
 <body>
     <div id="root">
-        <!-- Visible loading state while JS bundles resolve -->
         <div class="h-screen w-screen flex items-center justify-center bg-black">
             <div class="flex flex-col items-center gap-4">
                 <div class="w-8 h-8 border-2 border-amber-500 border-t-transparent rounded-full animate-spin"></div>
-                <p class="text-[10px] tracking-[0.4em] text-white/40 uppercase animate-pulse">Initialising Atelier...</p>
+                <p class="text-[10px] tracking-[0.4em] text-white/40 uppercase animate-pulse">Establishing Nexus...</p>
             </div>
         </div>
     </div>
