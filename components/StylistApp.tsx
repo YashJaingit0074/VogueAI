@@ -1,8 +1,7 @@
-
 import React, { useState, useEffect, useRef } from 'react';
 import { GoogleGenAI, LiveServerMessage, Modality } from '@google/genai';
 import { createBlob, decode, decodeAudioData } from '../services/audioService';
-import { StylistMessage, LocationData } from '../types';
+import { StylistMessage } from '../types';
 import Avatar from './Avatar';
 
 const StylistApp: React.FC = () => {
@@ -25,34 +24,23 @@ const StylistApp: React.FC = () => {
   const playbackQueueRef = useRef<Promise<void>>(Promise.resolve());
   const scheduledEndTimeRef = useRef(0);
 
-  // Safely check for the API key to prevent "Internal error" crashes
-  const getSafeApiKey = () => {
-    try {
-      return typeof process !== 'undefined' ? process.env?.API_KEY : undefined;
-    } catch (e) {
-      return undefined;
-    }
-  };
-
-  const checkConfig = async () => {
-    const apiKey = getSafeApiKey();
-    if (apiKey) {
-      setNeedsKey(false);
-      return true;
-    }
-    
-    if (window.aistudio) {
-      const hasKey = await window.aistudio.hasSelectedApiKey();
-      setNeedsKey(!hasKey);
-      return hasKey;
-    }
-    
-    setNeedsKey(true);
-    return false;
-  };
-
   useEffect(() => {
-    checkConfig();
+    const checkKeyAvailability = async () => {
+      // Check for key in process.env or via AI Studio helper
+      const key = process.env.API_KEY;
+      if (!key) {
+        if (window.aistudio) {
+          const hasKey = await window.aistudio.hasSelectedApiKey();
+          setNeedsKey(!hasKey);
+        } else {
+          setNeedsKey(true);
+        }
+      } else {
+        setNeedsKey(false);
+      }
+    };
+    
+    checkKeyAvailability();
     setMessages([{
       role: 'assistant',
       text: "Namaste. I am VogueAI. The digital atelier is online. How shall we refine your aesthetic today?",
@@ -83,19 +71,19 @@ const StylistApp: React.FC = () => {
       await window.aistudio.openSelectKey();
       setNeedsKey(false);
       setErrorMessage(null);
-    } else {
-      setErrorMessage("Please set your API_KEY in Vercel environment variables.");
     }
   };
 
   const startSession = async () => {
     setErrorMessage(null);
-    const hasKey = await checkConfig();
-    const currentApiKey = getSafeApiKey();
-
-    if (!currentApiKey && !window.aistudio) {
-      setErrorMessage("Cloud authentication missing. Check environment variables.");
-      return;
+    
+    // Attempt key selection if missing
+    if (!process.env.API_KEY && window.aistudio) {
+      const hasKey = await window.aistudio.hasSelectedApiKey();
+      if (!hasKey) {
+        await window.aistudio.openSelectKey();
+        // Proceeding immediately as per instructions
+      }
     }
 
     try {
@@ -105,7 +93,8 @@ const StylistApp: React.FC = () => {
       await inputAudioContextRef.current.resume();
       await outputAudioContextRef.current.resume();
 
-      const ai = new GoogleGenAI({ apiKey: currentApiKey || (process.env.API_KEY as string) });
+      // IMPORTANT: Strictly following the manual initialization pattern
+      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
 
       const sessionPromise = ai.live.connect({
@@ -175,7 +164,7 @@ const StylistApp: React.FC = () => {
           },
           onclose: () => stopSession(),
           onerror: (e: any) => {
-            console.error("Cloud Error:", e);
+            console.error("Session Error:", e);
             setErrorMessage(e.message || "Connectivity Interrupted");
             stopSession();
           }
@@ -183,7 +172,7 @@ const StylistApp: React.FC = () => {
       });
       sessionRef.current = await sessionPromise;
     } catch (e: any) { 
-      setErrorMessage(e.message || "Failed to initialize cloud link.");
+      setErrorMessage("Cloud link failed. Ensure your API Key is valid and billing is active.");
       setIsLive(false);
     }
   };
@@ -227,7 +216,7 @@ const StylistApp: React.FC = () => {
           {needsKey && (
             <button 
               onClick={handleOpenKeyDialog}
-              className="mb-8 px-8 py-3 bg-white text-black text-[10px] font-bold tracking-[0.4em] rounded-full hover:bg-zinc-200 transition-all flex items-center gap-3 active:scale-95 shadow-[0_10px_30px_rgba(255,255,255,0.1)]"
+              className="mb-8 px-8 py-3 bg-white text-black text-[10px] font-bold tracking-[0.4em] rounded-full hover:bg-zinc-200 transition-all active:scale-95 shadow-[0_10px_30px_rgba(255,255,255,0.1)]"
             >
               AUTHENTICATE CLOUD
             </button>
@@ -254,10 +243,10 @@ const StylistApp: React.FC = () => {
         <div className="p-10 flex justify-between items-end border-b border-white/[0.03]">
           <div>
             <h1 className="text-3xl font-serif font-bold text-gradient">VogueAI</h1>
-            <p className="text-[9px] tracking-[0.4em] text-zinc-600 uppercase mt-2 font-bold">Encrypted Session Unit</p>
+            <p className="text-[9px] tracking-[0.4em] text-zinc-600 uppercase mt-2 font-bold">Digital Session Unit</p>
           </div>
           <div className={`text-[8px] font-mono px-3 py-1 rounded-full border ${isLive ? 'border-green-500/20 text-green-500' : 'border-white/5 text-zinc-700'}`}>
-            {isLive ? 'ENCRYPTED' : 'DISCONNECTED'}
+            {isLive ? 'ACTIVE' : 'READY'}
           </div>
         </div>
 
@@ -297,7 +286,7 @@ const StylistApp: React.FC = () => {
                 type="text"
                 value={textInput}
                 onChange={(e) => setTextInput(e.target.value)}
-                placeholder={needsKey ? "System locking..." : "Direct message to atelier..."}
+                placeholder={needsKey ? "System lock engaged..." : "Message the atelier..."}
                 disabled={needsKey}
                 className="w-full bg-transparent border-b border-white/5 py-4 text-sm text-white placeholder:text-zinc-800 focus:outline-none focus:border-white/20 transition-all disabled:opacity-20"
               />
