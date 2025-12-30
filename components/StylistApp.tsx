@@ -1,9 +1,9 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { GoogleGenAI, LiveServerMessage, Modality } from '@google/genai';
-import { createBlob, decode, decodeAudioData } from '../services/audioService';
-import { StylistMessage, LocationData } from '../types';
-import Avatar from './Avatar';
+import { createBlob, decode, decodeAudioData } from '../services/audioService.ts';
+import { StylistMessage, LocationData } from '../types.ts';
+import Avatar from './Avatar.tsx';
 
 const StylistApp: React.FC = () => {
   const [messages, setMessages] = useState<StylistMessage[]>([]);
@@ -27,10 +27,21 @@ const StylistApp: React.FC = () => {
   const playbackQueueRef = useRef<Promise<void>>(Promise.resolve());
   const scheduledEndTimeRef = useRef(0);
 
+  // Helper to safely access process.env without crashing if undefined
+  const getEnvKey = () => {
+    try {
+      return process.env.API_KEY;
+    } catch {
+      return undefined;
+    }
+  };
+
   useEffect(() => {
     const checkKeyStatus = async () => {
+      const apiKey = getEnvKey();
+      
       // Priority 1: Check for injected Environment Variable (Vercel/Production)
-      if (process.env.API_KEY) {
+      if (apiKey) {
         setNeedsKey(false);
         return;
       }
@@ -40,8 +51,7 @@ const StylistApp: React.FC = () => {
         const hasKey = await window.aistudio.hasSelectedApiKey();
         setNeedsKey(!hasKey);
       } else {
-        // If neither exists, we're in a misconfigured state
-        setErrorMessage("API Key not found. Please set API_KEY in your environment variables.");
+        setNeedsKey(true);
       }
     };
     
@@ -95,7 +105,11 @@ const StylistApp: React.FC = () => {
       await inputAudioContextRef.current.resume();
       await outputAudioContextRef.current.resume();
 
-      // Ensure we use the most recent API key (useful for the AI Studio dialog flow)
+      const apiKey = getEnvKey();
+      if (!apiKey && (!window.aistudio || !(await window.aistudio.hasSelectedApiKey()))) {
+          throw new Error("No API Key available. Please link a key.");
+      }
+
       const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
 
@@ -209,7 +223,6 @@ const StylistApp: React.FC = () => {
 
   return (
     <div className="h-screen w-screen flex flex-col md:flex-row bg-[#020202] overflow-hidden">
-      {/* Studio Stage */}
       <div className="relative w-full md:w-[60%] h-[50vh] md:h-full bg-[#050505] flex flex-col items-center justify-center p-12 overflow-hidden border-b md:border-b-0 md:border-r border-white/5">
         <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_40%,#111_0%,#000_100%)] opacity-80" />
         <div className="absolute top-10 left-10 text-white/5 text-[120px] font-serif italic select-none pointer-events-none">VOGUE</div>
@@ -245,7 +258,7 @@ const StylistApp: React.FC = () => {
               style={isListening ? { width: `${micLevel * 100}%` } : {}}
             />
           </div>
-          {!isLive && !needsKey && !errorMessage && (
+          {!isLive && !needsKey && (
             <button 
               onClick={startSession}
               className="mt-6 text-[9px] text-white/30 uppercase tracking-[0.5em] hover:text-white transition-colors"
@@ -256,7 +269,6 @@ const StylistApp: React.FC = () => {
         </div>
       </div>
 
-      {/* Control Panel */}
       <div className="flex-1 h-[50vh] md:h-full flex flex-col glass relative z-20 shadow-[-20px_0_50px_rgba(0,0,0,0.5)]">
         <div className="p-8 flex justify-between items-center border-b border-white/5">
           <div>
