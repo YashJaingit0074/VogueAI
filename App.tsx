@@ -1,6 +1,6 @@
 
 import React from 'react';
-import StylistApp from './components/StylistApp.tsx';
+import StylistApp from './components/StylistApp';
 
 const App: React.FC = () => {
   return (

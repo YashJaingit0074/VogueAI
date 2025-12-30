@@ -7,80 +7,63 @@
     <title>VogueAI | Digital Couture Stylist</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    
-    <!-- Robust process shim - Must be at the very top -->
-    <script>
-      window.process = window.process || { env: { NODE_ENV: 'production' } };
-      
-      // Emergency UI Error Reporter
-      window.onerror = function(msg, url, line, col, error) {
-        var root = document.getElementById('root');
-        if (root) {
-          root.innerHTML = '<div style="background:#111;color:#ff4444;padding:2rem;font-family:monospace;height:100vh;">' +
-            '<h1 style="font-size:1.5rem">Atelier Initialization Error</h1>' +
-            '<p>The system failed to boot. Check console for details.</p>' +
-            '<pre style="background:#222;padding:1rem;margin-top:1rem;overflow:auto;">' + msg + '</pre>' +
-            '</div>';
-        }
-        return false;
-      };
-    </script>
-
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,700;1,700&family=Plus+Jakarta+Sans:wght@300;400;500;600&display=swap');
         
-        :root { --accent: #fbbf24; }
+        :root {
+            --accent: #fbbf24; /* Gold */
+        }
+
         body {
             font-family: 'Plus Jakarta Sans', sans-serif;
             background-color: #050505;
             color: #fafafa;
             overflow: hidden;
-            margin: 0;
         }
-        .font-serif { font-family: 'Playfair Display', serif; }
+
+        .font-serif {
+            font-family: 'Playfair Display', serif;
+        }
+
         .glass {
             background: rgba(20, 20, 20, 0.6);
             backdrop-filter: blur(16px);
             -webkit-backdrop-filter: blur(16px);
             border: 1px solid rgba(255, 255, 255, 0.08);
         }
+
         .text-gradient {
             background: linear-gradient(to right, #fff, #a1a1aa);
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
         }
+
         @keyframes float {
             0%, 100% { transform: translateY(0px); }
             50% { transform: translateY(-10px); }
         }
-        .animate-float { animation: float 4s ease-in-out infinite; }
+
+        .animate-float {
+            animation: float 4s ease-in-out infinite;
+        }
+
+        /* Custom Scrollbar */
         ::-webkit-scrollbar { width: 4px; }
         ::-webkit-scrollbar-track { background: transparent; }
         ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 10px; }
     </style>
-
 <script type="importmap">
 {
   "imports": {
-    "react": "https://esm.sh/react@19.0.0",
-    "react-dom": "https://esm.sh/react-dom@19.0.0",
-    "react-dom/client": "https://esm.sh/react-dom@19.0.0/client",
-    "@google/genai": "https://esm.sh/@google/genai@1.34.0",
+    "react": "https://esm.sh/react@^19.2.3",
     "react-dom/": "https://esm.sh/react-dom@^19.2.3/",
-    "react/": "https://esm.sh/react@^19.2.3/"
+    "react/": "https://esm.sh/react@^19.2.3/",
+    "@google/genai": "https://esm.sh/@google/genai@^1.34.0"
   }
 }
 </script>
 </head>
 <body>
-    <div id="root">
-        <div class="h-screen w-screen flex items-center justify-center bg-black">
-            <div class="flex flex-col items-center gap-4">
-                <div class="w-8 h-8 border-2 border-amber-500 border-t-transparent rounded-full animate-spin"></div>
-                <p class="text-[10px] tracking-[0.4em] text-white/40 uppercase animate-pulse">Establishing Nexus...</p>
-            </div>
-        </div>
-    </div>
-    <script type="module" src="./index.tsx"></script>
+    <div id="root"></div>
 </body>
 </html>
