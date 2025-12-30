@@ -27,30 +27,25 @@ const StylistApp: React.FC = () => {
   const playbackQueueRef = useRef<Promise<void>>(Promise.resolve());
   const scheduledEndTimeRef = useRef(0);
 
-  // Helper to safely access process.env without crashing if undefined
-  const getEnvKey = () => {
-    try {
-      return process.env.API_KEY;
-    } catch {
-      return undefined;
-    }
+  // Safe check for the API key to avoid ReferenceErrors
+  const getAvailableKey = () => {
+    return (window.process?.env?.API_KEY) || undefined;
   };
 
   useEffect(() => {
     const checkKeyStatus = async () => {
-      const apiKey = getEnvKey();
+      const apiKey = getAvailableKey();
       
-      // Priority 1: Check for injected Environment Variable (Vercel/Production)
       if (apiKey) {
         setNeedsKey(false);
         return;
       }
 
-      // Priority 2: Check for AI Studio Key Selection Tool
       if (window.aistudio) {
         const hasKey = await window.aistudio.hasSelectedApiKey();
         setNeedsKey(!hasKey);
       } else {
+        // If we are on Vercel and API_KEY isn't set, we need to show the error
         setNeedsKey(true);
       }
     };
@@ -60,12 +55,13 @@ const StylistApp: React.FC = () => {
     if (navigator.geolocation) {
       navigator.geolocation.getCurrentPosition(
         (pos) => setLocation({ latitude: pos.coords.latitude, longitude: pos.coords.longitude }),
-        () => console.warn("Location denied")
+        () => console.warn("Location access denied")
       );
     }
+    
     setMessages([{
       role: 'assistant',
-      text: "Namaste. The atelier is open. I am VogueAI—your personal creative director. What aesthetic shall we explore today?",
+      text: "Namaste. The atelier is open. I am VogueAI—your personal creative director. How shall we redefine your aesthetic today?",
       timestamp: Date.now()
     }]);
   }, []);
@@ -94,23 +90,36 @@ const StylistApp: React.FC = () => {
     if (window.aistudio) {
       await window.aistudio.openSelectKey();
       setNeedsKey(false);
+    } else {
+      setErrorMessage("Please set the API_KEY environment variable in your Vercel project settings.");
     }
   };
 
   const startSession = async () => {
     setErrorMessage(null);
     try {
+      const apiKey = getAvailableKey();
+      
+      // If no key in process.env, check if user needs to select one via UI
+      if (!apiKey && window.aistudio) {
+        const hasKey = await window.aistudio.hasSelectedApiKey();
+        if (!hasKey) {
+          await window.aistudio.openSelectKey();
+        }
+      }
+
+      // Final validation before connecting
+      const finalKey = getAvailableKey();
+      if (!finalKey) {
+        throw new Error("No API Key found. Ensure API_KEY is set in Vercel or selected via the key picker.");
+      }
+
       inputAudioContextRef.current = new AudioContext({ sampleRate: 16000, latencyHint: 'interactive' });
       outputAudioContextRef.current = new AudioContext({ sampleRate: 24000, latencyHint: 'interactive' });
       await inputAudioContextRef.current.resume();
       await outputAudioContextRef.current.resume();
 
-      const apiKey = getEnvKey();
-      if (!apiKey && (!window.aistudio || !(await window.aistudio.hasSelectedApiKey()))) {
-          throw new Error("No API Key available. Please link a key.");
-      }
-
-      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+      const ai = new GoogleGenAI({ apiKey: finalKey });
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
 
       const sessionPromise = ai.live.connect({
@@ -180,16 +189,11 @@ const StylistApp: React.FC = () => {
               currentInputTranscriptionRef.current = ''; currentOutputTranscriptionRef.current = '';
             }
           },
-          onclose: (e) => {
-            stopSession();
-          },
+          onclose: () => stopSession(),
           onerror: (e: any) => {
-            console.error("Cloud Connection Error:", e);
-            const msg = e.message || "Unknown Cloud Error";
-            setErrorMessage(`Cloud Connectivity Error: ${msg}`);
-            if (msg.includes("Requested entity was not found")) {
-              setNeedsKey(true);
-            }
+            const msg = e.message || "Cloud Connection Error";
+            setErrorMessage(msg);
+            if (msg.includes("Requested entity was not found")) setNeedsKey(true);
             stopSession();
           }
         }
@@ -208,8 +212,8 @@ const StylistApp: React.FC = () => {
     setMicLevel(0); nextStartTimeRef.current = 0; scheduledEndTimeRef.current = 0;
     playbackQueueRef.current = Promise.resolve();
     
-    if (inputAudioContextRef.current) inputAudioContextRef.current.close();
-    if (outputAudioContextRef.current) outputAudioContextRef.current.close();
+    if (inputAudioContextRef.current?.state !== 'closed') inputAudioContextRef.current?.close();
+    if (outputAudioContextRef.current?.state !== 'closed') outputAudioContextRef.current?.close();
   };
 
   const handleSendMessage = (e?: React.FormEvent) => {
@@ -223,6 +227,7 @@ const StylistApp: React.FC = () => {
 
   return (
     <div className="h-screen w-screen flex flex-col md:flex-row bg-[#020202] overflow-hidden">
+      {/* Visualizer Stage */}
       <div className="relative w-full md:w-[60%] h-[50vh] md:h-full bg-[#050505] flex flex-col items-center justify-center p-12 overflow-hidden border-b md:border-b-0 md:border-r border-white/5">
         <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_40%,#111_0%,#000_100%)] opacity-80" />
         <div className="absolute top-10 left-10 text-white/5 text-[120px] font-serif italic select-none pointer-events-none">VOGUE</div>
@@ -231,7 +236,7 @@ const StylistApp: React.FC = () => {
         
         <div className="mt-8 text-center z-10 flex flex-col items-center">
           {errorMessage && (
-            <div className="mb-4 px-4 py-2 bg-red-500/10 border border-red-500/30 rounded-lg text-red-400 text-[10px] tracking-widest uppercase animate-pulse">
+            <div className="mb-4 px-4 py-2 bg-red-500/10 border border-red-500/30 rounded-lg text-red-400 text-[10px] tracking-widest uppercase animate-pulse max-w-xs">
               {errorMessage}
             </div>
           )}
@@ -241,7 +246,7 @@ const StylistApp: React.FC = () => {
               onClick={handleOpenKeyDialog}
               className="mb-4 px-6 py-2 bg-amber-500 text-black text-[10px] font-bold tracking-widest rounded-full hover:bg-amber-400 transition-all flex items-center gap-2 shadow-[0_0_20px_rgba(251,191,36,0.2)]"
             >
-              <i className="fa-solid fa-key"></i> LINK CLOUD KEY
+              <i className="fa-solid fa-key"></i> LINK CLOUD ACCESS
             </button>
           )}
 
@@ -252,16 +257,11 @@ const StylistApp: React.FC = () => {
             </h2>
             <span className={`h-1 w-1 rounded-full ${isSpeaking ? 'bg-amber-500 shadow-[0_0_10px_rgba(251,191,36,0.5)]' : 'bg-white/10'}`} />
           </div>
-          <div className="h-0.5 w-48 bg-white/5 overflow-hidden rounded-full">
-            <div 
-              className={`h-full bg-amber-500 transition-all duration-75 ${isSpeaking ? 'w-full opacity-100' : isListening ? 'opacity-50' : 'w-0'}`}
-              style={isListening ? { width: `${micLevel * 100}%` } : {}}
-            />
-          </div>
+          
           {!isLive && !needsKey && (
             <button 
               onClick={startSession}
-              className="mt-6 text-[9px] text-white/30 uppercase tracking-[0.5em] hover:text-white transition-colors"
+              className="mt-6 text-[9px] text-white/30 uppercase tracking-[0.5em] hover:text-white transition-colors border-b border-white/5 pb-1"
             >
               Establish Cloud Link
             </button>
@@ -269,11 +269,12 @@ const StylistApp: React.FC = () => {
         </div>
       </div>
 
+      {/* Chat & Logs */}
       <div className="flex-1 h-[50vh] md:h-full flex flex-col glass relative z-20 shadow-[-20px_0_50px_rgba(0,0,0,0.5)]">
         <div className="p-8 flex justify-between items-center border-b border-white/5">
           <div>
             <h1 className="text-2xl font-serif font-bold text-gradient tracking-tight">Curation Log</h1>
-            <p className="text-[9px] tracking-[0.3em] text-zinc-500 uppercase mt-1">Cloud Unit v3.0</p>
+            <p className="text-[9px] tracking-[0.3em] text-zinc-500 uppercase mt-1">Direct Feed Unit 01</p>
           </div>
         </div>
 
@@ -302,7 +303,7 @@ const StylistApp: React.FC = () => {
               onClick={isLive ? stopSession : startSession}
               className={`w-16 h-16 rounded-full flex items-center justify-center transition-all duration-500 ${
                 needsKey ? 'bg-zinc-800 text-zinc-600 cursor-not-allowed' :
-                isLive ? 'bg-zinc-900 text-amber-500 border border-amber-500/50 shadow-[0_0_30px_rgba(251,191,36,0.3)]' : 'bg-white text-black hover:scale-105 active:scale-95'
+                isLive ? 'bg-zinc-900 text-amber-500 border border-amber-500/50 shadow-[0_0_30px_rgba(251,191,36,0.3)]' : 'bg-white text-black hover:scale-105 active:scale-95 shadow-xl'
               }`}
             >
               <i className={`fa-solid ${isLive ? 'fa-microphone-slash' : 'fa-microphone'} text-xl`}></i>
@@ -312,7 +313,7 @@ const StylistApp: React.FC = () => {
                 type="text"
                 value={textInput}
                 onChange={(e) => setTextInput(e.target.value)}
-                placeholder={needsKey ? "Awaiting cloud authorization..." : "Direct Message..."}
+                placeholder={needsKey ? "System awaiting cloud authorization..." : "Direct Message..."}
                 disabled={needsKey}
                 className="w-full bg-zinc-900/80 border border-white/10 rounded-3xl px-8 py-5 text-sm text-zinc-100 placeholder:text-zinc-700 focus:outline-none focus:border-amber-500/40 transition-all disabled:opacity-50"
               />
