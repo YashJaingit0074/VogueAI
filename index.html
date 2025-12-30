@@ -7,9 +7,13 @@
     <!-- Favicon fix -->
     <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>👗</text></svg>">
     
-    <!-- Prevent ReferenceError: process is not defined in production builds -->
+    <!-- Robust Production Shim for process.env -->
     <script>
-      window.process = window.process || { env: {} };
+      (function() {
+        window.process = window.process || { env: {} };
+        // Ensure API_KEY is at least an empty string to prevent GenAI SDK from throwing immediately on init
+        window.process.env = window.process.env || {};
+      })();
     </script>
 
     <script src="https://cdn.tailwindcss.com"></script>
@@ -27,19 +31,27 @@
         }
         .font-serif { font-family: 'Playfair Display', serif; }
         .glass {
-            background: rgba(10, 10, 10, 0.7);
-            backdrop-filter: blur(24px);
-            -webkit-backdrop-filter: blur(24px);
-            border-left: 1px solid rgba(255, 255, 255, 0.05);
+            background: rgba(8, 8, 8, 0.8);
+            backdrop-filter: blur(32px);
+            -webkit-backdrop-filter: blur(32px);
+            border-left: 1px solid rgba(255, 255, 255, 0.03);
         }
         .text-gradient {
-            background: linear-gradient(to bottom right, #ffffff 30%, #52525b 100%);
+            background: linear-gradient(to bottom right, #ffffff 40%, #71717a 100%);
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
         }
         ::-webkit-scrollbar { width: 3px; }
         ::-webkit-scrollbar-track { background: transparent; }
         ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.05); border-radius: 10px; }
+        
+        .animate-subtle-pulse {
+            animation: subtle-pulse 4s ease-in-out infinite;
+        }
+        @keyframes subtle-pulse {
+            0%, 100% { opacity: 0.1; transform: scale(1); }
+            50% { opacity: 0.2; transform: scale(1.05); }
+        }
     </style>
 <script type="importmap">
 {

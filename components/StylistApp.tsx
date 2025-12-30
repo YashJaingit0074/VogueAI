@@ -26,7 +26,7 @@ const StylistApp: React.FC = () => {
 
   useEffect(() => {
     const checkKeyAvailability = async () => {
-      // Check for key in process.env or via AI Studio helper
+      // Safe check for process.env.API_KEY
       const key = process.env.API_KEY;
       if (!key) {
         if (window.aistudio) {
@@ -77,12 +77,11 @@ const StylistApp: React.FC = () => {
   const startSession = async () => {
     setErrorMessage(null);
     
-    // Attempt key selection if missing
+    // Check if key is truly available before proceeding
     if (!process.env.API_KEY && window.aistudio) {
       const hasKey = await window.aistudio.hasSelectedApiKey();
       if (!hasKey) {
         await window.aistudio.openSelectKey();
-        // Proceeding immediately as per instructions
       }
     }
 
@@ -93,7 +92,7 @@ const StylistApp: React.FC = () => {
       await inputAudioContextRef.current.resume();
       await outputAudioContextRef.current.resume();
 
-      // IMPORTANT: Strictly following the manual initialization pattern
+      // ALWAYS use process.env.API_KEY as per GenAI SDK requirements
       const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
 
@@ -164,15 +163,16 @@ const StylistApp: React.FC = () => {
           },
           onclose: () => stopSession(),
           onerror: (e: any) => {
-            console.error("Session Error:", e);
-            setErrorMessage(e.message || "Connectivity Interrupted");
+            console.error("Gemini Session Error:", e);
+            setErrorMessage("Connection interrupted. Please verify your API key and network.");
             stopSession();
           }
         }
       });
       sessionRef.current = await sessionPromise;
     } catch (e: any) { 
-      setErrorMessage("Cloud link failed. Ensure your API Key is valid and billing is active.");
+      console.error("Startup Error:", e);
+      setErrorMessage("Atelier Offline: Failed to establish cloud handshake.");
       setIsLive(false);
     }
   };
@@ -204,11 +204,15 @@ const StylistApp: React.FC = () => {
         <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_40%,#0a0a0a_0%,#000_100%)]" />
         <div className="absolute top-10 left-10 text-white/[0.02] text-[120px] md:text-[180px] font-serif italic select-none pointer-events-none uppercase">Atelier</div>
         
+        {/* Subtle Background Animation */}
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-amber-500/5 rounded-full blur-[100px] animate-subtle-pulse pointer-events-none" />
+
         <Avatar isSpeaking={isSpeaking} isListening={isListening} micLevel={micLevel} />
         
         <div className="mt-12 text-center z-10 flex flex-col items-center">
           {errorMessage && (
-            <div className="mb-6 px-4 py-2 bg-red-950/20 border border-red-900/40 rounded-lg text-red-500 text-[9px] tracking-[0.2em] uppercase animate-pulse">
+            <div className="mb-6 px-6 py-3 bg-red-950/20 border border-red-900/40 rounded-xl text-red-500 text-[10px] tracking-[0.2em] uppercase animate-pulse shadow-lg">
+              <i className="fa-solid fa-triangle-exclamation mr-3"></i>
               {errorMessage}
             </div>
           )}
@@ -216,23 +220,26 @@ const StylistApp: React.FC = () => {
           {needsKey && (
             <button 
               onClick={handleOpenKeyDialog}
-              className="mb-8 px-8 py-3 bg-white text-black text-[10px] font-bold tracking-[0.4em] rounded-full hover:bg-zinc-200 transition-all active:scale-95 shadow-[0_10px_30px_rgba(255,255,255,0.1)]"
+              className="mb-8 px-10 py-4 bg-white text-black text-[11px] font-bold tracking-[0.4em] rounded-full hover:bg-zinc-200 transition-all active:scale-95 shadow-[0_15px_40px_rgba(255,255,255,0.15)] flex items-center gap-4"
             >
-              AUTHENTICATE CLOUD
+              <i className="fa-solid fa-key text-[10px]"></i>
+              AUTHENTICATE SESSION
             </button>
           )}
 
-          <div className="flex items-center gap-6 mb-6">
-            <div className="flex flex-col items-center gap-2">
-              <span className={`h-1.5 w-1.5 rounded-full transition-all duration-500 ${isListening ? 'bg-indigo-500 shadow-[0_0_12px_rgba(99,102,241,0.8)] scale-125' : 'bg-white/5'}`} />
-              <span className="text-[8px] tracking-widest text-zinc-600 uppercase">Input</span>
+          <div className="flex items-center gap-8 mb-6">
+            <div className="flex flex-col items-center gap-3">
+              <div className={`h-2 w-2 rounded-full transition-all duration-700 ${isListening ? 'bg-indigo-500 shadow-[0_0_15px_rgba(99,102,241,1)] scale-150' : 'bg-white/5'}`} />
+              <span className="text-[9px] tracking-[0.3em] text-zinc-600 uppercase font-bold">Input</span>
             </div>
-            <h2 className="text-[11px] tracking-[0.8em] text-white/40 font-semibold uppercase">
+            <div className="h-[1px] w-12 bg-white/5" />
+            <h2 className="text-[12px] tracking-[1em] text-white/50 font-bold uppercase">
               {isSpeaking ? 'Curating' : isListening ? 'Streaming' : 'Standby'}
             </h2>
-            <div className="flex flex-col items-center gap-2">
-              <span className={`h-1.5 w-1.5 rounded-full transition-all duration-500 ${isSpeaking ? 'bg-amber-500 shadow-[0_0_12px_rgba(245,158,11,0.8)] scale-125' : 'bg-white/5'}`} />
-              <span className="text-[8px] tracking-widest text-zinc-600 uppercase">Output</span>
+            <div className="h-[1px] w-12 bg-white/5" />
+            <div className="flex flex-col items-center gap-3">
+              <div className={`h-2 w-2 rounded-full transition-all duration-700 ${isSpeaking ? 'bg-amber-500 shadow-[0_0_15px_rgba(245,158,11,1)] scale-150' : 'bg-white/5'}`} />
+              <span className="text-[9px] tracking-[0.3em] text-zinc-600 uppercase font-bold">Output</span>
             </div>
           </div>
         </div>
@@ -242,23 +249,24 @@ const StylistApp: React.FC = () => {
       <div className="flex-1 h-[55vh] md:h-full flex flex-col glass relative z-20">
         <div className="p-10 flex justify-between items-end border-b border-white/[0.03]">
           <div>
-            <h1 className="text-3xl font-serif font-bold text-gradient">VogueAI</h1>
-            <p className="text-[9px] tracking-[0.4em] text-zinc-600 uppercase mt-2 font-bold">Digital Session Unit</p>
+            <h1 className="text-4xl font-serif font-bold text-gradient tracking-tight">VogueAI</h1>
+            <p className="text-[10px] tracking-[0.5em] text-zinc-600 uppercase mt-3 font-black">Secure Couture Terminal</p>
           </div>
-          <div className={`text-[8px] font-mono px-3 py-1 rounded-full border ${isLive ? 'border-green-500/20 text-green-500' : 'border-white/5 text-zinc-700'}`}>
-            {isLive ? 'ACTIVE' : 'READY'}
+          <div className={`text-[9px] font-mono px-4 py-2 rounded-full border transition-all duration-500 ${isLive ? 'border-green-500/20 text-green-500 bg-green-500/5' : 'border-white/5 text-zinc-700'}`}>
+            <span className={`inline-block w-1 h-1 rounded-full mr-2 ${isLive ? 'bg-green-500 animate-pulse' : 'bg-zinc-800'}`}></span>
+            {isLive ? 'LIVE ENCRYPTION' : 'STATION READY'}
           </div>
         </div>
 
-        <div className="flex-1 overflow-y-auto px-10 py-12 space-y-10 custom-scrollbar">
+        <div className="flex-1 overflow-y-auto px-10 py-12 space-y-12 custom-scrollbar">
           {messages.map((m, i) => (
-            <div key={i} className={`flex flex-col ${m.role === 'user' ? 'items-end' : 'items-start'} animate-in fade-in slide-in-from-bottom-6 duration-700`}>
-              <div className="flex items-center gap-3 mb-3">
-                <span className="text-[8px] uppercase tracking-[0.25em] text-zinc-600 font-black">{m.role === 'assistant' ? 'Director' : 'Client'}</span>
-                {m.role === 'assistant' && <div className="w-1 h-1 rounded-full bg-amber-500/40" />}
+            <div key={i} className={`flex flex-col ${m.role === 'user' ? 'items-end' : 'items-start'} animate-in fade-in slide-in-from-bottom-8 duration-1000 ease-out`}>
+              <div className="flex items-center gap-4 mb-4">
+                <span className="text-[9px] uppercase tracking-[0.3em] text-zinc-600 font-black">{m.role === 'assistant' ? 'Director' : 'Client'}</span>
+                {m.role === 'assistant' && <div className="w-1.5 h-1.5 rounded-full bg-amber-500/30" />}
               </div>
-              <div className={`max-w-[90%] px-7 py-5 rounded-2xl text-[13px] leading-[1.8] tracking-wide ${
-                m.role === 'user' ? 'bg-white text-black font-semibold shadow-2xl' : 'bg-zinc-900/40 text-zinc-400 border border-white/[0.03] italic'
+              <div className={`max-w-[85%] px-8 py-6 rounded-3xl text-[14px] leading-[1.8] tracking-wide shadow-xl ${
+                m.role === 'user' ? 'bg-white text-black font-semibold' : 'bg-zinc-900/30 text-zinc-400 border border-white/[0.04] italic'
               }`}>
                 {m.text}
               </div>
@@ -267,31 +275,31 @@ const StylistApp: React.FC = () => {
           <div ref={chatEndRef} />
         </div>
 
-        <div className="p-10 bg-black/40 border-t border-white/[0.03]">
-          <form onSubmit={handleSendMessage} className="flex items-center gap-8">
+        <div className="p-10 bg-black/60 border-t border-white/[0.03]">
+          <form onSubmit={handleSendMessage} className="flex items-center gap-10">
             <button
               type="button"
               disabled={needsKey}
               onClick={isLive ? stopSession : startSession}
-              className={`w-14 h-14 rounded-full flex items-center justify-center transition-all duration-500 group relative ${
+              className={`w-16 h-16 rounded-full flex items-center justify-center transition-all duration-700 group relative ${
                 needsKey ? 'bg-zinc-900 text-zinc-800' :
-                isLive ? 'bg-amber-500 text-black shadow-[0_0_40px_rgba(245,158,11,0.3)]' : 'bg-zinc-900 text-zinc-400 border border-white/10 hover:border-white/30'
+                isLive ? 'bg-amber-500 text-black shadow-[0_0_50px_rgba(245,158,11,0.4)] scale-110' : 'bg-zinc-900 text-zinc-400 border border-white/10 hover:border-white/40 hover:scale-105'
               }`}
             >
-              <i className={`fa-solid ${isLive ? 'fa-microphone-slash' : 'fa-microphone'} text-lg`}></i>
-              {isLive && <span className="absolute inset-0 rounded-full bg-amber-500 animate-ping opacity-20" />}
+              <i className={`fa-solid ${isLive ? 'fa-microphone-slash' : 'fa-microphone'} text-xl`}></i>
+              {isLive && <span className="absolute inset-0 rounded-full bg-amber-500 animate-ping opacity-30" />}
             </button>
             <div className="flex-1 relative">
               <input
                 type="text"
                 value={textInput}
                 onChange={(e) => setTextInput(e.target.value)}
-                placeholder={needsKey ? "System lock engaged..." : "Message the atelier..."}
+                placeholder={needsKey ? "System locking..." : "Direct message to director..."}
                 disabled={needsKey}
-                className="w-full bg-transparent border-b border-white/5 py-4 text-sm text-white placeholder:text-zinc-800 focus:outline-none focus:border-white/20 transition-all disabled:opacity-20"
+                className="w-full bg-transparent border-b border-white/10 py-5 text-base text-white placeholder:text-zinc-800 focus:outline-none focus:border-amber-500/50 transition-all disabled:opacity-20"
               />
-              <button type="submit" disabled={needsKey || !textInput.trim()} className="absolute right-0 top-1/2 -translate-y-1/2 text-zinc-700 hover:text-white transition-colors disabled:opacity-0">
-                <i className="fa-solid fa-arrow-right-long"></i>
+              <button type="submit" disabled={needsKey || !textInput.trim()} className="absolute right-0 top-1/2 -translate-y-1/2 text-zinc-700 hover:text-white transition-all transform hover:translate-x-1 disabled:opacity-0">
+                <i className="fa-solid fa-arrow-right-long text-lg"></i>
               </button>
             </div>
           </form>
