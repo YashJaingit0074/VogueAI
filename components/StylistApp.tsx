@@ -12,7 +12,6 @@ const StylistApp: React.FC = () => {
   const [isListening, setIsListening] = useState(false);
   const [micLevel, setMicLevel] = useState(0);
   const [textInput, setTextInput] = useState('');
-  const [location, setLocation] = useState<LocationData | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [needsKey, setNeedsKey] = useState(false);
 
@@ -23,52 +22,38 @@ const StylistApp: React.FC = () => {
   const currentInputTranscriptionRef = useRef('');
   const currentOutputTranscriptionRef = useRef('');
   const chatEndRef = useRef<HTMLDivElement>(null);
-
   const playbackQueueRef = useRef<Promise<void>>(Promise.resolve());
   const scheduledEndTimeRef = useRef(0);
 
-  // Safety helper to get API key from various possible sources
-  const getApiKey = () => {
+  // Safely check for the API key to prevent "Internal error" crashes
+  const checkConfig = async () => {
     try {
-      return typeof process !== 'undefined' && process.env ? process.env.API_KEY : undefined;
+      const apiKey = typeof process !== 'undefined' && process.env?.API_KEY;
+      if (apiKey) {
+        setNeedsKey(false);
+        return true;
+      }
+      
+      if (window.aistudio) {
+        const hasKey = await window.aistudio.hasSelectedApiKey();
+        setNeedsKey(!hasKey);
+        return hasKey;
+      }
+      
+      setNeedsKey(true);
+      return false;
     } catch (e) {
-      return undefined;
+      console.warn("Config check failed, defaulting to manual key entry state.");
+      setNeedsKey(true);
+      return false;
     }
   };
 
   useEffect(() => {
-    const checkKeyStatus = async () => {
-      const apiKey = getApiKey();
-      
-      // If we have an env var, we are good to go
-      if (apiKey) {
-        setNeedsKey(false);
-        return;
-      }
-
-      // Fallback for AI Studio preview environment
-      if (window.aistudio) {
-        const hasKey = await window.aistudio.hasSelectedApiKey();
-        setNeedsKey(!hasKey);
-      } else {
-        // Production without key
-        setNeedsKey(true);
-        setErrorMessage("Cloud Authorization Required: Please set your API_KEY in Vercel settings.");
-      }
-    };
-    
-    checkKeyStatus();
-
-    if (navigator.geolocation) {
-      navigator.geolocation.getCurrentPosition(
-        (pos) => setLocation({ latitude: pos.coords.latitude, longitude: pos.coords.longitude }),
-        () => console.warn("Location denied")
-      );
-    }
-    
+    checkConfig();
     setMessages([{
       role: 'assistant',
-      text: "Namaste. I am VogueAI. The digital atelier is online. How shall we redefine your aesthetic today?",
+      text: "Namaste. I am VogueAI. The digital atelier is online. How shall we refine your aesthetic today?",
       timestamp: Date.now()
     }]);
   }, []);
@@ -79,9 +64,7 @@ const StylistApp: React.FC = () => {
       if (outputAudioContextRef.current) {
         const now = outputAudioContextRef.current.currentTime;
         const shouldBeSpeaking = now < scheduledEndTimeRef.current;
-        if (shouldBeSpeaking !== isSpeaking) {
-          setIsSpeaking(shouldBeSpeaking);
-        }
+        if (shouldBeSpeaking !== isSpeaking) setIsSpeaking(shouldBeSpeaking);
       }
       rafId = requestAnimationFrame(checkPlayback);
     };
@@ -99,28 +82,30 @@ const StylistApp: React.FC = () => {
       setNeedsKey(false);
       setErrorMessage(null);
     } else {
-      window.open('https://aistudio.google.com/app/apikey', '_blank');
+      setErrorMessage("Please set your API_KEY in Vercel environment variables.");
     }
   };
 
   const startSession = async () => {
     setErrorMessage(null);
-    const apiKey = getApiKey();
+    const hasKey = await checkConfig();
+    
+    // Attempt to grab key directly - we must not use a separate variable to avoid stale closures
+    const currentApiKey = typeof process !== 'undefined' ? process.env.API_KEY : undefined;
 
-    if (!apiKey && !window.aistudio) {
-      setErrorMessage("Missing API Key. Check your Vercel Environment Variables.");
+    if (!currentApiKey && !window.aistudio) {
+      setErrorMessage("Cloud authentication missing. Check environment variables.");
       return;
     }
 
     try {
-      inputAudioContextRef.current = new AudioContext({ sampleRate: 16000, latencyHint: 'interactive' });
-      outputAudioContextRef.current = new AudioContext({ sampleRate: 24000, latencyHint: 'interactive' });
+      inputAudioContextRef.current = new AudioContext({ sampleRate: 16000 });
+      outputAudioContextRef.current = new AudioContext({ sampleRate: 24000 });
       
       await inputAudioContextRef.current.resume();
       await outputAudioContextRef.current.resume();
 
-      // Initialize AI with the key found at runtime
-      const ai = new GoogleGenAI({ apiKey: apiKey || process.env.API_KEY });
+      const ai = new GoogleGenAI({ apiKey: currentApiKey || process.env.API_KEY });
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
 
       const sessionPromise = ai.live.connect({
@@ -128,7 +113,7 @@ const StylistApp: React.FC = () => {
         config: {
           responseModalities: [Modality.AUDIO],
           speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Kore' } } },
-          systemInstruction: `You are VogueAI, an elite fashion director. Your style is avant-garde and sophisticated. Greet with "Namaste". Provide expert styling advice that is minimalist yet bold.`,
+          systemInstruction: `You are VogueAI, an elite fashion director. Tone: Sophisticated, minimalist, avant-garde. Greet with "Namaste". Focus on luxury styling advice.`,
           outputAudioTranscription: {},
           inputAudioTranscription: {},
         },
@@ -143,13 +128,10 @@ const StylistApp: React.FC = () => {
               const inputData = e.inputBuffer.getChannelData(0);
               let sum = 0;
               for (let i = 0; i < inputData.length; i++) sum += inputData[i] * inputData[i];
-              const rms = Math.sqrt(sum / inputData.length);
-              setMicLevel(Math.min(rms * 5, 1));
-
+              setMicLevel(Math.min(Math.sqrt(sum / inputData.length) * 5, 1));
+              
               const pcmBlob = createBlob(inputData);
-              sessionPromise.then((session) => {
-                session.sendRealtimeInput({ media: pcmBlob });
-              });
+              sessionPromise.then(s => s.sendRealtimeInput({ media: pcmBlob }));
             };
             
             source.connect(processor);
@@ -187,23 +169,21 @@ const StylistApp: React.FC = () => {
                 ...(currentInputTranscriptionRef.current ? [{ role: 'user' as const, text: currentInputTranscriptionRef.current, timestamp: Date.now() }] : []),
                 ...(currentOutputTranscriptionRef.current ? [{ role: 'assistant' as const, text: currentOutputTranscriptionRef.current, timestamp: Date.now() }] : [])
               ]);
-              currentInputTranscriptionRef.current = ''; currentOutputTranscriptionRef.current = '';
+              currentInputTranscriptionRef.current = ''; 
+              currentOutputTranscriptionRef.current = '';
             }
           },
-          onclose: (e) => stopSession(),
+          onclose: () => stopSession(),
           onerror: (e: any) => {
-            console.error("Gemini Error:", e);
-            setErrorMessage(e.message || "Cloud connection interrupted.");
-            if (e.message?.includes("API_KEY_INVALID") || e.message?.includes("not found")) {
-              setNeedsKey(true);
-            }
+            console.error("Cloud Error:", e);
+            setErrorMessage(e.message || "Connectivity Interrupted");
             stopSession();
           }
         }
       });
       sessionRef.current = await sessionPromise;
     } catch (e: any) { 
-      setErrorMessage(e.message || "Failed to establish secure link.");
+      setErrorMessage(e.message || "Failed to initialize cloud link.");
       setIsLive(false);
     }
   };
@@ -215,8 +195,8 @@ const StylistApp: React.FC = () => {
     setMicLevel(0); nextStartTimeRef.current = 0; scheduledEndTimeRef.current = 0;
     playbackQueueRef.current = Promise.resolve();
     
-    if (inputAudioContextRef.current) inputAudioContextRef.current.close().catch(() => {});
-    if (outputAudioContextRef.current) outputAudioContextRef.current.close().catch(() => {});
+    inputAudioContextRef.current?.close().catch(() => {});
+    outputAudioContextRef.current?.close().catch(() => {});
   };
 
   const handleSendMessage = (e?: React.FormEvent) => {
@@ -229,79 +209,67 @@ const StylistApp: React.FC = () => {
   };
 
   return (
-    <div className="h-screen w-screen flex flex-col md:flex-row bg-[#020202] overflow-hidden text-zinc-100 selection:bg-amber-500/30">
+    <div className="h-screen w-screen flex flex-col md:flex-row bg-[#020202] overflow-hidden">
       {/* Studio Stage */}
-      <div className="relative w-full md:w-[60%] h-[50vh] md:h-full bg-[#050505] flex flex-col items-center justify-center p-12 overflow-hidden border-b md:border-b-0 md:border-r border-white/5">
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_40%,#111_0%,#000_100%)] opacity-80" />
-        <div className="absolute top-10 left-10 text-white/5 text-[100px] md:text-[140px] font-serif italic select-none pointer-events-none">VOGUE</div>
+      <div className="relative w-full md:w-[60%] h-[45vh] md:h-full bg-[#050505] flex flex-col items-center justify-center p-8 overflow-hidden">
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_40%,#0a0a0a_0%,#000_100%)]" />
+        <div className="absolute top-10 left-10 text-white/[0.02] text-[120px] md:text-[180px] font-serif italic select-none pointer-events-none uppercase">Atelier</div>
         
         <Avatar isSpeaking={isSpeaking} isListening={isListening} micLevel={micLevel} />
         
-        <div className="mt-12 text-center z-10 flex flex-col items-center max-w-sm">
+        <div className="mt-12 text-center z-10 flex flex-col items-center">
           {errorMessage && (
-            <div className="mb-6 px-5 py-3 bg-red-500/10 border border-red-500/20 rounded-xl text-red-400 text-[10px] tracking-[0.2em] uppercase leading-relaxed animate-pulse">
+            <div className="mb-6 px-4 py-2 bg-red-950/20 border border-red-900/40 rounded-lg text-red-500 text-[9px] tracking-[0.2em] uppercase animate-pulse">
               {errorMessage}
             </div>
           )}
 
-          {needsKey && !errorMessage && (
+          {needsKey && (
             <button 
               onClick={handleOpenKeyDialog}
-              className="mb-6 px-8 py-3 bg-white text-black text-[10px] font-bold tracking-[0.3em] rounded-full hover:bg-zinc-200 transition-all flex items-center gap-3 shadow-[0_20px_40px_rgba(255,255,255,0.1)] active:scale-95"
+              className="mb-8 px-8 py-3 bg-white text-black text-[10px] font-bold tracking-[0.4em] rounded-full hover:bg-zinc-200 transition-all flex items-center gap-3 active:scale-95 shadow-[0_10px_30px_rgba(255,255,255,0.1)]"
             >
-              <i className="fa-solid fa-cloud-bolt"></i> CONFIGURE CLOUD KEY
+              AUTHENTICATE CLOUD
             </button>
           )}
 
-          <div className="flex items-center gap-4 mb-5">
-            <span className={`h-1 w-1 rounded-full ${isListening ? 'bg-indigo-500 animate-pulse' : 'bg-white/10'}`} />
-            <h2 className="text-[11px] tracking-[1em] text-white/50 font-medium uppercase transition-all duration-500">
-              {isSpeaking ? 'Model Output' : isListening ? 'Atelier Stream' : 'Unit Standby'}
+          <div className="flex items-center gap-6 mb-6">
+            <div className="flex flex-col items-center gap-2">
+              <span className={`h-1.5 w-1.5 rounded-full transition-all duration-500 ${isListening ? 'bg-indigo-500 shadow-[0_0_12px_rgba(99,102,241,0.8)] scale-125' : 'bg-white/5'}`} />
+              <span className="text-[8px] tracking-widest text-zinc-600 uppercase">Input</span>
+            </div>
+            <h2 className="text-[11px] tracking-[0.8em] text-white/40 font-semibold uppercase">
+              {isSpeaking ? 'Curating' : isListening ? 'Streaming' : 'Standby'}
             </h2>
-            <span className={`h-1 w-1 rounded-full ${isSpeaking ? 'bg-amber-500 animate-pulse' : 'bg-white/10'}`} />
+            <div className="flex flex-col items-center gap-2">
+              <span className={`h-1.5 w-1.5 rounded-full transition-all duration-500 ${isSpeaking ? 'bg-amber-500 shadow-[0_0_12px_rgba(245,158,11,0.8)] scale-125' : 'bg-white/5'}`} />
+              <span className="text-[8px] tracking-widest text-zinc-600 uppercase">Output</span>
+            </div>
           </div>
-          
-          <div className="h-[1px] w-64 bg-white/10 overflow-hidden relative">
-            <div 
-              className={`absolute inset-0 bg-gradient-to-r from-transparent via-amber-500 to-transparent transition-all duration-300 ${isSpeaking ? 'opacity-100' : 'opacity-0'}`}
-              style={{ width: '100%', left: isSpeaking ? '0' : '-100%' }}
-            />
-            <div 
-              className={`h-full bg-indigo-500/50 transition-all duration-75`}
-              style={{ width: `${micLevel * 100}%` }}
-            />
-          </div>
-
-          {!isLive && !needsKey && !errorMessage && (
-            <button 
-              onClick={startSession}
-              className="mt-8 text-[10px] text-white/20 uppercase tracking-[0.6em] hover:text-white transition-all hover:tracking-[0.7em]"
-            >
-              Initialize Atelier Link
-            </button>
-          )}
         </div>
       </div>
 
       {/* Control Panel */}
-      <div className="flex-1 h-[50vh] md:h-full flex flex-col glass relative z-20 shadow-[-40px_0_80px_rgba(0,0,0,0.8)] border-l border-white/5">
-        <div className="p-10 flex justify-between items-end border-b border-white/5">
+      <div className="flex-1 h-[55vh] md:h-full flex flex-col glass relative z-20">
+        <div className="p-10 flex justify-between items-end border-b border-white/[0.03]">
           <div>
-            <h1 className="text-3xl font-serif font-bold text-gradient tracking-tighter">Curation Log</h1>
-            <p className="text-[9px] tracking-[0.4em] text-zinc-600 uppercase mt-2 font-bold">Encrypted Multi-Modal Stream</p>
+            <h1 className="text-3xl font-serif font-bold text-gradient">VogueAI</h1>
+            <p className="text-[9px] tracking-[0.4em] text-zinc-600 uppercase mt-2 font-bold">Encrypted Session Unit</p>
           </div>
-          <div className="text-[9px] text-zinc-700 font-mono">0.0.3-RELEASE</div>
+          <div className={`text-[8px] font-mono px-3 py-1 rounded-full border ${isLive ? 'border-green-500/20 text-green-500' : 'border-white/5 text-zinc-700'}`}>
+            {isLive ? 'ENCRYPTED' : 'DISCONNECTED'}
+          </div>
         </div>
 
-        <div className="flex-1 overflow-y-auto px-10 py-8 space-y-8 scroll-smooth custom-scrollbar">
+        <div className="flex-1 overflow-y-auto px-10 py-12 space-y-10 custom-scrollbar">
           {messages.map((m, i) => (
-            <div key={i} className={`flex flex-col ${m.role === 'user' ? 'items-end' : 'items-start'} animate-in fade-in slide-in-from-bottom-4 duration-500`}>
+            <div key={i} className={`flex flex-col ${m.role === 'user' ? 'items-end' : 'items-start'} animate-in fade-in slide-in-from-bottom-6 duration-700`}>
               <div className="flex items-center gap-3 mb-3">
-                {m.role === 'assistant' && <div className="w-1 h-1 rounded-full bg-amber-500" />}
-                <span className="text-[9px] uppercase tracking-[0.2em] text-zinc-500 font-bold">{m.role === 'assistant' ? 'Director' : 'Client'}</span>
+                <span className="text-[8px] uppercase tracking-[0.25em] text-zinc-600 font-black">{m.role === 'assistant' ? 'Director' : 'Client'}</span>
+                {m.role === 'assistant' && <div className="w-1 h-1 rounded-full bg-amber-500/40" />}
               </div>
-              <div className={`max-w-[90%] px-6 py-5 rounded-3xl text-[13px] leading-relaxed tracking-wide ${
-                m.role === 'user' ? 'bg-white text-black font-semibold shadow-2xl' : 'bg-zinc-900/50 text-zinc-400 border border-white/5 italic'
+              <div className={`max-w-[90%] px-7 py-5 rounded-2xl text-[13px] leading-[1.8] tracking-wide ${
+                m.role === 'user' ? 'bg-white text-black font-semibold shadow-2xl' : 'bg-zinc-900/40 text-zinc-400 border border-white/[0.03] italic'
               }`}>
                 {m.text}
               </div>
@@ -310,34 +278,31 @@ const StylistApp: React.FC = () => {
           <div ref={chatEndRef} />
         </div>
 
-        <div className="p-10 bg-[#080808]/80 backdrop-blur-xl border-t border-white/5">
-          <form onSubmit={handleSendMessage} className="flex items-center gap-6">
+        <div className="p-10 bg-black/40 border-t border-white/[0.03]">
+          <form onSubmit={handleSendMessage} className="flex items-center gap-8">
             <button
               type="button"
               disabled={needsKey}
               onClick={isLive ? stopSession : startSession}
-              className={`w-14 h-14 rounded-full flex items-center justify-center transition-all duration-700 group ${
-                needsKey ? 'bg-zinc-900 text-zinc-800 cursor-not-allowed border border-white/5' :
-                isLive ? 'bg-amber-500 text-black shadow-[0_0_40px_rgba(251,191,36,0.2)] hover:scale-105' : 'bg-zinc-900 text-white hover:bg-zinc-800 border border-white/10'
+              className={`w-14 h-14 rounded-full flex items-center justify-center transition-all duration-500 group relative ${
+                needsKey ? 'bg-zinc-900 text-zinc-800' :
+                isLive ? 'bg-amber-500 text-black shadow-[0_0_40px_rgba(245,158,11,0.3)]' : 'bg-zinc-900 text-zinc-400 border border-white/10 hover:border-white/30'
               }`}
             >
-              <i className={`fa-solid ${isLive ? 'fa-microphone-slash' : 'fa-microphone'} text-lg group-active:scale-90 transition-transform`}></i>
+              <i className={`fa-solid ${isLive ? 'fa-microphone-slash' : 'fa-microphone'} text-lg`}></i>
+              {isLive && <span className="absolute inset-0 rounded-full bg-amber-500 animate-ping opacity-20" />}
             </button>
-            <div className="flex-1 relative group">
+            <div className="flex-1 relative">
               <input
                 type="text"
                 value={textInput}
                 onChange={(e) => setTextInput(e.target.value)}
-                placeholder={needsKey ? "System awaiting cloud key..." : "Message the atelier..."}
+                placeholder={needsKey ? "System locking..." : "Direct message to atelier..."}
                 disabled={needsKey}
-                className="w-full bg-transparent border-b border-white/10 px-2 py-4 text-[13px] text-zinc-100 placeholder:text-zinc-700 focus:outline-none focus:border-white transition-all disabled:opacity-30 tracking-wide"
+                className="w-full bg-transparent border-b border-white/5 py-4 text-sm text-white placeholder:text-zinc-800 focus:outline-none focus:border-white/20 transition-all disabled:opacity-20"
               />
-              <button 
-                type="submit" 
-                disabled={needsKey || !textInput.trim()} 
-                className="absolute right-0 top-1/2 -translate-y-1/2 text-zinc-600 hover:text-white transition-all disabled:opacity-0 active:scale-90"
-              >
-                <i className="fa-solid fa-chevron-right text-xs"></i>
+              <button type="submit" disabled={needsKey || !textInput.trim()} className="absolute right-0 top-1/2 -translate-y-1/2 text-zinc-700 hover:text-white transition-colors disabled:opacity-0">
+                <i className="fa-solid fa-arrow-right-long"></i>
               </button>
             </div>
           </form>
