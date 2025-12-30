@@ -1,31 +1,29 @@
 # VogueAI: Digital Couture Stylist 👗✨
 
-**VogueAI** is an ultra-modern, voice-first AI fashion consultant. It utilizes the **Gemini 2.5 Flash Native Audio** model to deliver a high-fashion, real-time conversational experience that bridges the gap between digital and physical styling.
+**VogueAI** is an ultra-modern, voice-first AI fashion consultant. It utilizes the **Gemini 2.5 Flash Native Audio** model to deliver a high-fashion, real-time conversational experience.
 
-## 🚀 Tech Stack Overview
+## 🏗️ Cloud & Import Architecture
 
-### 🧠 Advanced AI Engineering
-- **Gemini 2.5 Flash Native Audio**: Implements the native multimodal Live API. VogueAI processes and generates raw audio natively, preserving emotional nuance and tone without intermediate text steps.
-- **System Persona Engineering**: A sophisticated prompt architecture that defines the "VogueAI" brand voice—elite, sophisticated, and avant-garde.
-- **Multimodal Interactions**: High-performance handling of synchronized audio and text data streams.
+### 🌐 Module Management (Import Maps)
+This project uses **Native ES Modules**. Instead of a traditional `npm install` and build step, we utilize an `importmap` in `index.html`:
+- **CDN-First**: Dependencies like `@google/genai` and `react` are streamed via `esm.sh`.
+- **Zero Build Latency**: The browser resolves imports directly, significantly reducing deployment complexity and bundle size.
 
-### ⚛️ Frontend Excellence
-- **React 19**: Leveraging the newest concurrent rendering features for high-performance UI updates.
-- **TypeScript**: Strict type definitions for audio buffers, API payloads, and component states.
-- **Web Audio API**: 
-    - **PCM Streaming**: Custom logic to handle 16-bit raw PCM data at 16kHz (Input) and 24kHz (Output).
-    - **Signal Processing**: Real-time RMS analysis to drive dynamic SVG animations based on microphone input.
-- **Glassmorphic UI**: High-fidelity design using Tailwind CSS with backdrop blurs, radial gradients, and fluid animations.
+### ☁️ Cloud Connectivity (Gemini Live API)
+VogueAI is a **multimodal cloud-native application**:
+- **WebSocket Streaming**: The app establishes a full-duplex WebSocket connection to Google's Gemini servers.
+- **Native Audio Processing**: Unlike traditional AI bots that convert voice to text first, this app streams **raw PCM audio** (16-bit, 16kHz) directly to the cloud. The AI "hears" the user and "speaks" back natively.
+- **Serverless Edge**: The UI is hosted on **Vercel**, while the intelligence is distributed across Google's high-performance AI infrastructure.
 
-### 🛠️ Architecture & DX
-- **Single-Turn Low Latency**: Optimized for <300ms response times by utilizing direct audio-to-audio processing.
-- **Sequential Playback Queue**: A custom-built Promise-based queue that ensures zero-gap audio playback by managing the browser's hardware clock.
-- **Responsive Design**: Fluid layout optimized for both desktop "Atelier View" and mobile luxury consultations.
+### 🚀 Deployment on Vercel
+1. **Environment Variables**: Add `API_KEY` in your Vercel project settings.
+2. **Global Reach**: Vercel serves the frontend from the edge, while the Gemini API handles global inference.
 
-## 📖 Functional Highlights
-- **Real-time VAD**: The SVG Avatar reacts dynamically to voice intensity and model state.
-- **Gapless Conversation**: Intelligent interruption handling allows for natural, fluid dialogue.
-- **Context Awareness**: Integrates browser Geolocation to tailor fashion advice to local climates and events.
+## 🛠️ Tech Stack Highlights
+- **React 19**: Modern UI rendering.
+- **Web Audio API**: Real-time signal processing and buffer management.
+- **Tailwind CSS**: High-performance, utility-first styling.
+- **Google GenAI SDK**: Direct cloud integration for the Gemini 2.5 Flash model.
 
 ---
-*Built as a demonstration of the intersection between High Fashion and Generative AI.*
+*Built for the intersection of High Fashion and Generative AI.*

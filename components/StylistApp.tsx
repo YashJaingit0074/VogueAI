@@ -28,13 +28,24 @@ const StylistApp: React.FC = () => {
   const scheduledEndTimeRef = useRef(0);
 
   useEffect(() => {
-    const checkKey = async () => {
+    const checkKeyStatus = async () => {
+      // Priority 1: Check for injected Environment Variable (Vercel/Production)
+      if (process.env.API_KEY) {
+        setNeedsKey(false);
+        return;
+      }
+
+      // Priority 2: Check for AI Studio Key Selection Tool
       if (window.aistudio) {
         const hasKey = await window.aistudio.hasSelectedApiKey();
         setNeedsKey(!hasKey);
+      } else {
+        // If neither exists, we're in a misconfigured state
+        setErrorMessage("API Key not found. Please set API_KEY in your environment variables.");
       }
     };
-    checkKey();
+    
+    checkKeyStatus();
 
     if (navigator.geolocation) {
       navigator.geolocation.getCurrentPosition(
@@ -84,6 +95,7 @@ const StylistApp: React.FC = () => {
       await inputAudioContextRef.current.resume();
       await outputAudioContextRef.current.resume();
 
+      // Ensure we use the most recent API key (useful for the AI Studio dialog flow)
       const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
 
@@ -92,7 +104,7 @@ const StylistApp: React.FC = () => {
         config: {
           responseModalities: [Modality.AUDIO],
           speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Kore' } } },
-          systemInstruction: `You are VogueAI, an elite fashion director. Greet with "Namaste". Your tone is refined and avant-garde. Provide expert styling advice combining global couture with traditional aesthetics.`,
+          systemInstruction: `You are VogueAI, an elite fashion director. Greet with "Namaste". Your tone is refined, sophisticated, and avant-garde. You provide styling advice based on the user's current environment and high-fashion trends.`,
           outputAudioTranscription: {},
           inputAudioTranscription: {},
         },
@@ -155,13 +167,12 @@ const StylistApp: React.FC = () => {
             }
           },
           onclose: (e) => {
-            console.log("Session Closed", e);
             stopSession();
           },
           onerror: (e: any) => {
-            console.error("Live API Error:", e);
-            const msg = e.message || "Unknown Connection Error";
-            setErrorMessage(`Live Session Error: ${msg}`);
+            console.error("Cloud Connection Error:", e);
+            const msg = e.message || "Unknown Cloud Error";
+            setErrorMessage(`Cloud Connectivity Error: ${msg}`);
             if (msg.includes("Requested entity was not found")) {
               setNeedsKey(true);
             }
@@ -171,7 +182,7 @@ const StylistApp: React.FC = () => {
       });
       sessionRef.current = await sessionPromise;
     } catch (e: any) { 
-      setErrorMessage(e.message || "Failed to start session.");
+      setErrorMessage(e.message || "Failed to establish cloud session.");
       setIsLive(false);
     }
   };
@@ -179,12 +190,8 @@ const StylistApp: React.FC = () => {
   const stopSession = () => {
     sessionRef.current?.close(); 
     sessionRef.current = null;
-    setIsLive(false); 
-    setIsListening(false); 
-    setIsSpeaking(false);
-    setMicLevel(0);
-    nextStartTimeRef.current = 0;
-    scheduledEndTimeRef.current = 0;
+    setIsLive(false); setIsListening(false); setIsSpeaking(false);
+    setMicLevel(0); nextStartTimeRef.current = 0; scheduledEndTimeRef.current = 0;
     playbackQueueRef.current = Promise.resolve();
     
     if (inputAudioContextRef.current) inputAudioContextRef.current.close();
@@ -211,7 +218,7 @@ const StylistApp: React.FC = () => {
         
         <div className="mt-8 text-center z-10 flex flex-col items-center">
           {errorMessage && (
-            <div className="mb-4 px-4 py-2 bg-red-500/20 border border-red-500/50 rounded-lg text-red-400 text-xs animate-pulse">
+            <div className="mb-4 px-4 py-2 bg-red-500/10 border border-red-500/30 rounded-lg text-red-400 text-[10px] tracking-widest uppercase animate-pulse">
               {errorMessage}
             </div>
           )}
@@ -219,18 +226,18 @@ const StylistApp: React.FC = () => {
           {needsKey && (
             <button 
               onClick={handleOpenKeyDialog}
-              className="mb-4 px-6 py-2 bg-amber-500 text-black text-xs font-bold rounded-full hover:bg-amber-400 transition-all flex items-center gap-2"
+              className="mb-4 px-6 py-2 bg-amber-500 text-black text-[10px] font-bold tracking-widest rounded-full hover:bg-amber-400 transition-all flex items-center gap-2 shadow-[0_0_20px_rgba(251,191,36,0.2)]"
             >
-              <i className="fa-solid fa-key"></i> Select Valid API Key
+              <i className="fa-solid fa-key"></i> LINK CLOUD KEY
             </button>
           )}
 
           <div className="flex items-center gap-3 mb-4">
-            <span className={`h-1.5 w-1.5 rounded-full ${isListening ? 'bg-indigo-500 shadow-[0_0_10px_rgba(99,102,241,0.5)]' : 'bg-white/10'}`} />
+            <span className={`h-1 w-1 rounded-full ${isListening ? 'bg-indigo-500 shadow-[0_0_10px_rgba(99,102,241,0.5)]' : 'bg-white/10'}`} />
             <h2 className="text-[10px] tracking-[0.8em] text-white/40 font-bold uppercase transition-all duration-300">
-              {isSpeaking ? 'Curating Style...' : isListening ? 'Listening...' : 'Atelier Offline'}
+              {isSpeaking ? 'Curating Style' : isListening ? 'Atelier Active' : 'System Standby'}
             </h2>
-            <span className={`h-1.5 w-1.5 rounded-full ${isSpeaking ? 'bg-amber-500 shadow-[0_0_10px_rgba(251,191,36,0.5)]' : 'bg-white/10'}`} />
+            <span className={`h-1 w-1 rounded-full ${isSpeaking ? 'bg-amber-500 shadow-[0_0_10px_rgba(251,191,36,0.5)]' : 'bg-white/10'}`} />
           </div>
           <div className="h-0.5 w-48 bg-white/5 overflow-hidden rounded-full">
             <div 
@@ -238,6 +245,14 @@ const StylistApp: React.FC = () => {
               style={isListening ? { width: `${micLevel * 100}%` } : {}}
             />
           </div>
+          {!isLive && !needsKey && !errorMessage && (
+            <button 
+              onClick={startSession}
+              className="mt-6 text-[9px] text-white/30 uppercase tracking-[0.5em] hover:text-white transition-colors"
+            >
+              Establish Cloud Link
+            </button>
+          )}
         </div>
       </div>
 
@@ -246,7 +261,7 @@ const StylistApp: React.FC = () => {
         <div className="p-8 flex justify-between items-center border-b border-white/5">
           <div>
             <h1 className="text-2xl font-serif font-bold text-gradient tracking-tight">Curation Log</h1>
-            <p className="text-[9px] tracking-[0.3em] text-zinc-500 uppercase mt-1">Digital Atelier System v3.0</p>
+            <p className="text-[9px] tracking-[0.3em] text-zinc-500 uppercase mt-1">Cloud Unit v3.0</p>
           </div>
         </div>
 
@@ -255,7 +270,7 @@ const StylistApp: React.FC = () => {
             <div key={i} className={`flex flex-col ${m.role === 'user' ? 'items-end' : 'items-start'} animate-in fade-in slide-in-from-bottom-2`}>
               <div className="flex items-center gap-2 mb-2">
                 {m.role === 'assistant' && <div className="w-1.5 h-1.5 rounded-full bg-amber-500" />}
-                <span className="text-[8px] uppercase tracking-widest text-zinc-600 font-bold">{m.role === 'assistant' ? 'VogueAI' : 'Client'}</span>
+                <span className="text-[8px] uppercase tracking-widest text-zinc-600 font-bold">{m.role === 'assistant' ? 'Director' : 'Client'}</span>
               </div>
               <div className={`max-w-[85%] px-5 py-4 rounded-2xl text-sm leading-relaxed ${
                 m.role === 'user' ? 'bg-zinc-100 text-black font-medium shadow-xl' : 'bg-zinc-900/80 text-zinc-300 border border-white/5 italic'
@@ -277,7 +292,6 @@ const StylistApp: React.FC = () => {
                 needsKey ? 'bg-zinc-800 text-zinc-600 cursor-not-allowed' :
                 isLive ? 'bg-zinc-900 text-amber-500 border border-amber-500/50 shadow-[0_0_30px_rgba(251,191,36,0.3)]' : 'bg-white text-black hover:scale-105 active:scale-95'
               }`}
-              title={isLive ? "End Curation" : "Start Live Consultation"}
             >
               <i className={`fa-solid ${isLive ? 'fa-microphone-slash' : 'fa-microphone'} text-xl`}></i>
             </button>
@@ -286,11 +300,11 @@ const StylistApp: React.FC = () => {
                 type="text"
                 value={textInput}
                 onChange={(e) => setTextInput(e.target.value)}
-                placeholder={needsKey ? "Please select an API key first..." : "Message the Atelier..."}
+                placeholder={needsKey ? "Awaiting cloud authorization..." : "Direct Message..."}
                 disabled={needsKey}
                 className="w-full bg-zinc-900/80 border border-white/10 rounded-3xl px-8 py-5 text-sm text-zinc-100 placeholder:text-zinc-700 focus:outline-none focus:border-amber-500/40 transition-all disabled:opacity-50"
               />
-              <button type="submit" disabled={needsKey} className="absolute right-6 top-1/2 -translate-y-1/2 text-zinc-600 hover:text-amber-500 transition-colors disabled:pointer-events-none">
+              <button type="submit" disabled={needsKey || !textInput.trim()} className="absolute right-6 top-1/2 -translate-y-1/2 text-zinc-600 hover:text-amber-500 transition-colors disabled:opacity-0">
                 <i className="fa-solid fa-arrow-right-long text-lg"></i>
               </button>
             </div>
