@@ -1,0 +1,8 @@
+{
+  "name": "VogueAI: Personal Fashion Stylist",
+  "description": "An interactive 3D-avatar driven fashion assistant that provides personalized outfit recommendations based on wardrobe, occasion, and location using real-time AI conversation.",
+  "requestFramePermissions": [
+    "microphone",
+    "geolocation"
+  ]
+}
