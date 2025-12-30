@@ -27,25 +27,25 @@ const StylistApp: React.FC = () => {
   const playbackQueueRef = useRef<Promise<void>>(Promise.resolve());
   const scheduledEndTimeRef = useRef(0);
 
-  // Safe check for the API key to avoid ReferenceErrors
-  const getAvailableKey = () => {
-    return (window.process?.env?.API_KEY) || undefined;
+  // Safely check for the key without crashing the render
+  const getEnvKey = () => {
+    try {
+      return process?.env?.API_KEY || '';
+    } catch {
+      return '';
+    }
   };
 
   useEffect(() => {
     const checkKeyStatus = async () => {
-      const apiKey = getAvailableKey();
+      const apiKey = getEnvKey();
       
       if (apiKey) {
         setNeedsKey(false);
-        return;
-      }
-
-      if (window.aistudio) {
+      } else if (window.aistudio) {
         const hasKey = await window.aistudio.hasSelectedApiKey();
         setNeedsKey(!hasKey);
       } else {
-        // If we are on Vercel and API_KEY isn't set, we need to show the error
         setNeedsKey(true);
       }
     };
@@ -91,35 +91,23 @@ const StylistApp: React.FC = () => {
       await window.aistudio.openSelectKey();
       setNeedsKey(false);
     } else {
-      setErrorMessage("Please set the API_KEY environment variable in your Vercel project settings.");
+      setErrorMessage("Please set the API_KEY environment variable in Vercel.");
     }
   };
 
   const startSession = async () => {
     setErrorMessage(null);
     try {
-      const apiKey = getAvailableKey();
+      const apiKey = getEnvKey();
+      if (!apiKey && (!window.aistudio || !(await window.aistudio.hasSelectedApiKey()))) {
+        throw new Error("No API Key found. Link a key or set API_KEY in Vercel.");
+      }
+
+      inputAudioContextRef.current = new AudioContext({ sampleRate: 16000 });
+      outputAudioContextRef.current = new AudioContext({ sampleRate: 24000 });
       
-      // If no key in process.env, check if user needs to select one via UI
-      if (!apiKey && window.aistudio) {
-        const hasKey = await window.aistudio.hasSelectedApiKey();
-        if (!hasKey) {
-          await window.aistudio.openSelectKey();
-        }
-      }
-
-      // Final validation before connecting
-      const finalKey = getAvailableKey();
-      if (!finalKey) {
-        throw new Error("No API Key found. Ensure API_KEY is set in Vercel or selected via the key picker.");
-      }
-
-      inputAudioContextRef.current = new AudioContext({ sampleRate: 16000, latencyHint: 'interactive' });
-      outputAudioContextRef.current = new AudioContext({ sampleRate: 24000, latencyHint: 'interactive' });
-      await inputAudioContextRef.current.resume();
-      await outputAudioContextRef.current.resume();
-
-      const ai = new GoogleGenAI({ apiKey: finalKey });
+      // Always create a fresh instance for the current session
+      const ai = new GoogleGenAI({ apiKey: apiKey || process.env.API_KEY });
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
 
       const sessionPromise = ai.live.connect({
@@ -127,7 +115,7 @@ const StylistApp: React.FC = () => {
         config: {
           responseModalities: [Modality.AUDIO],
           speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Kore' } } },
-          systemInstruction: `You are VogueAI, an elite fashion director. Greet with "Namaste". Your tone is refined, sophisticated, and avant-garde. You provide styling advice based on the user's current environment and high-fashion trends.`,
+          systemInstruction: "You are VogueAI, an elite fashion director. Greet with 'Namaste'. Provide sophisticated styling advice.",
           outputAudioTranscription: {},
           inputAudioTranscription: {},
         },
@@ -142,8 +130,7 @@ const StylistApp: React.FC = () => {
               const inputData = e.inputBuffer.getChannelData(0);
               let sum = 0;
               for (let i = 0; i < inputData.length; i++) sum += inputData[i] * inputData[i];
-              const rms = Math.sqrt(sum / inputData.length);
-              setMicLevel(Math.min(rms * 5, 1));
+              setMicLevel(Math.min(Math.sqrt(sum / inputData.length) * 5, 1));
 
               const pcmBlob = createBlob(inputData);
               sessionPromise.then((session) => {
@@ -191,16 +178,14 @@ const StylistApp: React.FC = () => {
           },
           onclose: () => stopSession(),
           onerror: (e: any) => {
-            const msg = e.message || "Cloud Connection Error";
-            setErrorMessage(msg);
-            if (msg.includes("Requested entity was not found")) setNeedsKey(true);
+            setErrorMessage(e.message || "Cloud Connection Lost");
             stopSession();
           }
         }
       });
       sessionRef.current = await sessionPromise;
     } catch (e: any) { 
-      setErrorMessage(e.message || "Failed to establish cloud session.");
+      setErrorMessage(e.message || "Failed to establish cloud link.");
       setIsLive(false);
     }
   };
@@ -211,7 +196,6 @@ const StylistApp: React.FC = () => {
     setIsLive(false); setIsListening(false); setIsSpeaking(false);
     setMicLevel(0); nextStartTimeRef.current = 0; scheduledEndTimeRef.current = 0;
     playbackQueueRef.current = Promise.resolve();
-    
     if (inputAudioContextRef.current?.state !== 'closed') inputAudioContextRef.current?.close();
     if (outputAudioContextRef.current?.state !== 'closed') outputAudioContextRef.current?.close();
   };
@@ -227,7 +211,6 @@ const StylistApp: React.FC = () => {
 
   return (
     <div className="h-screen w-screen flex flex-col md:flex-row bg-[#020202] overflow-hidden">
-      {/* Visualizer Stage */}
       <div className="relative w-full md:w-[60%] h-[50vh] md:h-full bg-[#050505] flex flex-col items-center justify-center p-12 overflow-hidden border-b md:border-b-0 md:border-r border-white/5">
         <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_40%,#111_0%,#000_100%)] opacity-80" />
         <div className="absolute top-10 left-10 text-white/5 text-[120px] font-serif italic select-none pointer-events-none">VOGUE</div>
@@ -269,7 +252,6 @@ const StylistApp: React.FC = () => {
         </div>
       </div>
 
-      {/* Chat & Logs */}
       <div className="flex-1 h-[50vh] md:h-full flex flex-col glass relative z-20 shadow-[-20px_0_50px_rgba(0,0,0,0.5)]">
         <div className="p-8 flex justify-between items-center border-b border-white/5">
           <div>
